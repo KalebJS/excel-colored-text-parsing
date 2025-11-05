@@ -1,0 +1,15 @@
+[project]
+name = "excel-colored-text"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openpyxl>=3.1.5",
+    "pydantic>=2.12.4",
+]
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.1a25",
+]
