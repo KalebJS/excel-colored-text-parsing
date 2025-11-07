@@ -1,0 +1,28 @@
+FROM ubuntu:22.04
+
+# Avoid interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install LibreOffice and Python dependencies
+RUN apt-get update && apt-get install -y \
+    libreoffice \
+    libreoffice-calc \
+    python3 \
+    python3-pip \
+    python3-uno \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+RUN pip3 install pydantic
+
+# Create working directory
+WORKDIR /app
+
+# Copy the parser script
+COPY parse_rich_text_libreoffice.py /app/
+
+# Expose the UNO port
+EXPOSE 2002
+
+# Start LibreOffice in headless mode and keep container running
+CMD ["sh", "-c", "soffice --headless --accept='socket,host=0.0.0.0,port=2002;urp;StarOffice.ComponentContext' --nofirststartwizard"]

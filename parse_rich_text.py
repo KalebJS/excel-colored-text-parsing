@@ -28,7 +28,7 @@ CellValue = (
     | time
     | timedelta
     | Literal[True]
-    | Any  # For formula types and other edge cases
+    | Any  # For formula types and other edge cases  # pyright: ignore[reportExplicitAny]
     | None
 )
 
@@ -66,8 +66,8 @@ class Cell(BaseModel):
     color_groups: list[Segment]
 
 
-# Standard indexed colors (indices 0-63)
-INDEXED_COLORS = [
+# Default indexed colors (indices 0-63) - used as fallback
+DEFAULT_INDEXED_COLORS = [
     '00000000', '00FFFFFF', '00FF0000', '0000FF00', '000000FF',
     '00FFFF00', '00FF00FF', '0000FFFF', '00000000', '00FFFFFF',
     '00FF0000', '0000FF00', '000000FF', '00FFFF00', '00FF00FF',
@@ -82,6 +82,16 @@ INDEXED_COLORS = [
     '00969696', '00003366', '00339966', '00003300', '00333300',
     '00993300', '00993366', '00333399', '00333333'
 ]
+
+
+def get_indexed_colors(wb: Workbook) -> tuple[str, ...]:
+    """
+    Get the indexed color palette from the workbook.
+    Workbooks can have custom palettes that override the default colors.
+    """
+    if hasattr(wb, '_colors') and wb._colors:
+        return wb._colors
+    return tuple(DEFAULT_INDEXED_COLORS)
 
 # Constants for color conversion
 RGBMAX = 0xff  # 255
@@ -109,6 +119,10 @@ def rgb_to_ms_hls(red: int | str, green: int | None = None, blue: int | None = N
     Converts RGB values (0-255) or hex string to MS Excel HLS format (base 240).
     Based on: https://gist.github.com/Mike-Honey/b36e651e9a7f1d2e1d60ce1c63b9b633
     """
+    red_val: float
+    green_val: float
+    blue_val: float
+    
     if green is None:
         if isinstance(red, str):
             if len(red) > 6:
@@ -119,6 +133,8 @@ def rgb_to_ms_hls(red: int | str, green: int | None = None, blue: int | None = N
         else:
             raise ValueError("Invalid RGB input")
     else:
+        if not isinstance(red, int) or not isinstance(blue, int):
+            raise ValueError("RGB values must be integers")
         red_val = red / RGBMAX
         green_val = green / RGBMAX
         blue_val = blue / RGBMAX
@@ -161,24 +177,41 @@ def get_theme_colors(wb: Workbook) -> list[str]:
             '9BBB59', '8064A2', '4BACC6', 'F79646'
         ]
     
-    xlmns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
-    root = fromstring(wb.loaded_theme)
-    theme_el = root.find(QName(xlmns, 'themeElements').text)
-    color_schemes = theme_el.findall(QName(xlmns, 'clrScheme').text)
-    first_color_scheme = color_schemes[0]
-    
-    colors = []
-    for c in ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6']:
-        accent = first_color_scheme.find(QName(xlmns, c).text)
-        color_elements = list(accent)
-        if color_elements and 'window' in color_elements[0].attrib.get('val', ''):
-            colors.append(color_elements[0].attrib.get('lastClr', '000000'))
-        elif color_elements:
-            colors.append(color_elements[0].attrib.get('val', '000000'))
-        else:
-            colors.append('000000')
-    
-    return colors
+    try:
+        xlmns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+        root = fromstring(wb.loaded_theme)  # type: ignore
+        theme_el = root.find(QName(xlmns, 'themeElements').text)
+        if theme_el is None:
+            return ['FFFFFF', '000000', 'EEECE1', '1F497D', '4F81BD', 'C0504D',
+                    '9BBB59', '8064A2', '4BACC6', 'F79646']
+        
+        color_schemes = theme_el.findall(QName(xlmns, 'clrScheme').text)
+        if not color_schemes:
+            return ['FFFFFF', '000000', 'EEECE1', '1F497D', '4F81BD', 'C0504D',
+                    '9BBB59', '8064A2', '4BACC6', 'F79646']
+        
+        first_color_scheme = color_schemes[0]
+        
+        colors: list[str] = []
+        for c in ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6']:
+            accent = first_color_scheme.find(QName(xlmns, c).text)
+            if accent is None:
+                colors.append('000000')
+                continue
+            
+            color_elements = list(accent)
+            if color_elements and 'window' in str(color_elements[0].attrib.get('val', '')):
+                colors.append(str(color_elements[0].attrib.get('lastClr', '000000')))
+            elif color_elements:
+                colors.append(str(color_elements[0].attrib.get('val', '000000')))
+            else:
+                colors.append('000000')
+        
+        return colors
+    except Exception:
+        # Fallback to default theme colors on any error
+        return ['FFFFFF', '000000', 'EEECE1', '1F497D', '4F81BD', 'C0504D',
+                '9BBB59', '8064A2', '4BACC6', 'F79646']
 
 
 def theme_and_tint_to_rgb(wb: Workbook, theme: int, tint: float) -> str:
@@ -213,25 +246,35 @@ def get_color_hex(
     
     color_obj = font.color
     
+    # Check the color type first to determine how to extract the value
+    color_type = getattr(color_obj, 'type', 'rgb')
+    
     # RGB format (ARGB - first 2 chars are alpha channel)
-    if color_obj.rgb:
-        rgb_value = str(color_obj.rgb)
-        # Strip alpha channel (first 2 chars) to get RGB
-        color_hex = rgb_value[2:] if len(rgb_value) > 6 else rgb_value
-        return (color_hex, False)
+    if color_type == 'rgb' and hasattr(color_obj, 'rgb'):
+        try:
+            rgb_value = color_obj.rgb
+            # Check if it's actually a string (not the descriptor error message)
+            if isinstance(rgb_value, str) and not rgb_value.startswith('Values must be'):
+                # Strip alpha channel (first 2 chars) to get RGB
+                color_hex = rgb_value[2:] if len(rgb_value) > 6 else rgb_value
+                return (color_hex, False)
+        except (AttributeError, TypeError):
+            pass
     
     # Theme color with optional tint
-    if color_obj.theme is not None:
-        tint = color_obj.tint if color_obj.tint else 0.0
-        color_hex = theme_and_tint_to_rgb(wb, color_obj.theme, tint)
+    if color_type == 'theme' and hasattr(color_obj, 'theme') and color_obj.theme is not None:
+        theme_val = int(color_obj.theme)
+        tint_val = float(color_obj.tint) if hasattr(color_obj, 'tint') and color_obj.tint else 0.0
+        color_hex = theme_and_tint_to_rgb(wb, theme_val, tint_val)
         return (color_hex, False)
     
     # Indexed color
-    if color_obj.indexed is not None:
-        idx = color_obj.indexed
-        if 0 <= idx < len(INDEXED_COLORS):
+    if hasattr(color_obj, 'indexed') and color_obj.indexed is not None:
+        idx = int(color_obj.indexed)
+        indexed_colors = get_indexed_colors(wb)
+        if 0 <= idx < len(indexed_colors):
             # Strip alpha channel from indexed color
-            color_hex = INDEXED_COLORS[idx][2:]
+            color_hex = indexed_colors[idx][2:]
             return (color_hex, False)
     
     # No color information available
