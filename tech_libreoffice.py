@@ -225,8 +225,14 @@ def parse_cell_rich_text(cell: Any, cell_ref: str, show_progress: bool = True) -
         # Get character color
         try:
             char_color_long = cursor.getPropertyValue("CharColor")
-            char_color = rgb_from_long(char_color_long)
-            is_default = False
+            # LibreOffice returns -1 (0xFFFFFFFF) for "automatic" color
+            # which should be treated as black (0, 0, 0)
+            if char_color_long == -1 or char_color_long == 0xFFFFFFFF:
+                char_color = (0, 0, 0)
+                is_default = True
+            else:
+                char_color = rgb_from_long(char_color_long)
+                is_default = False
         except Exception:
             # If we can't get color, use black as default
             char_color = (0, 0, 0)
