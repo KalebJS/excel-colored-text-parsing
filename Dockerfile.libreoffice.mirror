@@ -3,7 +3,17 @@ FROM ubuntu:22.04
 # Avoid interactive prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Fix DNS issues with VPN - use Google DNS
+# Use a different Ubuntu mirror (choose one that works for you)
+# Option 1: US mirror
+RUN sed -i 's|http://archive.ubuntu.com|http://us.archive.ubuntu.com|g' /etc/apt/sources.list
+
+# Option 2: Or use a specific mirror (uncomment if needed)
+# RUN sed -i 's|http://archive.ubuntu.com|http://mirror.math.princeton.edu|g' /etc/apt/sources.list
+
+# Option 3: Or use Cloudflare mirror (uncomment if needed)
+# RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.edge.kernel.org|g' /etc/apt/sources.list
+
+# Fix DNS issues with VPN
 RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
     echo "nameserver 8.8.4.4" >> /etc/resolv.conf
 

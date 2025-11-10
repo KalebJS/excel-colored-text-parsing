@@ -12,7 +12,7 @@ Usage:
    soffice --headless --accept="socket,host=localhost,port=2002;urp;StarOffice.ComponentContext"
 
 2. Run this script:
-   python parse_rich_text_libreoffice.py
+   python tech_libreoffice.py
 """
 
 import os

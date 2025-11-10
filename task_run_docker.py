@@ -115,7 +115,7 @@ def run_parser_in_container(file_path: str) -> int:
     # The container has /app mounted to current directory
     cmd = [
         "docker", "exec", "-it", "libreoffice-uno",
-        "python3", "/app/parse_rich_text_libreoffice.py",
+        "python3", "/app/tech_libreoffice.py",
         f"/app/{file_path}"
     ]
     
