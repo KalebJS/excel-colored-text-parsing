@@ -76,10 +76,10 @@ class Cell(BaseModel):
 
 def rgb_from_long(color_long: int) -> tuple[int, int, int]:
     """Convert LibreOffice color (long integer) to RGB tuple."""
-    # LibreOffice stores colors as BGR in a long integer
-    b = (color_long >> 16) & 0xFF
+    # LibreOffice stores colors as RGB in a long integer
+    r = (color_long >> 16) & 0xFF
     g = (color_long >> 8) & 0xFF
-    r = color_long & 0xFF
+    b = color_long & 0xFF
     return (r, g, b)
 
 
