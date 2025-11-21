@@ -108,14 +108,14 @@ def connect_to_libreoffice(host: str = "localhost", port: int = 2002) -> Any:
         ) from e
 
 
-def start_libreoffice_headless(port: int = 2002, timeout: int = 10) -> bool:
+def start_libreoffice_headless(port: int = 2002, timeout: int = 10, host: str = "localhost") -> bool:
     """
     Start LibreOffice in headless mode with socket connection.
     
     Returns:
         True if LibreOffice started successfully, False otherwise
     """
-    print(f"  Starting LibreOffice on port {port}...")
+    print(f"  Starting LibreOffice on {host}:{port}...")
     
     # Try different soffice locations
     soffice_paths = [
@@ -135,20 +135,29 @@ def start_libreoffice_headless(port: int = 2002, timeout: int = 10) -> bool:
         print("  ERROR: Could not find soffice executable")
         return False
     
-    cmd = f'{soffice_cmd} --headless --accept="socket,host=localhost,port={port};urp;StarOffice.ComponentContext" &'
+    cmd = f'{soffice_cmd} --headless --accept="socket,host={host},port={port};urp;StarOffice.ComponentContext" &'
     print(f"  Running: {cmd}")
-    os.system(cmd)
+    _ = os.system(cmd)
     
-    # Wait for LibreOffice to start
-    print(f"  Waiting for LibreOffice to start (timeout: {timeout}s)...", end="", flush=True)
-    for i in range(timeout):
+    # Wait for LibreOffice socket to be ready
+    print(f"  Waiting for LibreOffice socket (timeout: {timeout}s)...", end="", flush=True)
+    for _ in range(timeout):
         time.sleep(1)
         print(".", end="", flush=True)
-        # Check if process is running
-        result = os.popen("ps aux | grep soffice | grep -v grep").read()
-        if result:
-            print(" Started!")
+        
+        # Try to actually connect to verify socket is ready
+        try:
+            local_context = uno.getComponentContext()
+            resolver = local_context.ServiceManager.createInstanceWithContext(
+                "com.sun.star.bridge.UnoUrlResolver", local_context
+            )
+            url = f"uno:socket,host={host},port={port};urp;StarOffice.ComponentContext"
+            resolver.resolve(url)
+            print(" Socket ready!")
             return True
+        except Exception:
+            # Socket not ready yet, continue waiting
+            pass
     
     print(" Timeout!")
     return False
@@ -210,6 +219,7 @@ def parse_cell_rich_text(cell: Any, cell_ref: str, show_progress: bool = True) -
     
     current_color: tuple[int, int, int] | None = None
     current_text = ""
+    current_is_default = False
     
     # Iterate through each character
     for i in range(len(cell_text)):
@@ -244,6 +254,7 @@ def parse_cell_rich_text(cell: Any, cell_ref: str, show_progress: bool = True) -
         if current_color is None:
             current_color = char_color
             current_text = char
+            current_is_default = is_default
         elif current_color == char_color:
             current_text += char
         else:
@@ -253,10 +264,11 @@ def parse_cell_rich_text(cell: Any, cell_ref: str, show_progress: bool = True) -
                 g=current_color[1],
                 b=current_color[2],
                 text=current_text,
-                is_default_color=is_default
+                is_default_color=current_is_default
             ))
             current_color = char_color
             current_text = char
+            current_is_default = is_default
     
     if show_progress:
         print(f"\r    Processing {len(cell_text)} characters... Done!     ")
@@ -268,7 +280,7 @@ def parse_cell_rich_text(cell: Any, cell_ref: str, show_progress: bool = True) -
             g=current_color[1] if current_color else 0,
             b=current_color[2] if current_color else 0,
             text=current_text,
-            is_default_color=is_default
+            is_default_color=current_is_default
         ))
     
     return Cell(cell_number=cell_ref, color_groups=segments)
@@ -287,13 +299,15 @@ def get_cell_reference(col: int, row: int) -> str:
     return f"{col_letter}{row + 1}"
 
 
-def main(file_path: str = "Book.xlsx", auto_start: bool = True) -> list[Cell]:
+def main(file_path: str = "Book.xlsx", auto_start: bool = True, host: str = "localhost", port: int = 2002) -> list[Cell]:
     """
     Main function to parse Excel file using LibreOffice.
     
     Args:
         file_path: Path to Excel file
         auto_start: Whether to automatically start LibreOffice
+        host: Host to connect to (use "127.0.0.1" in Docker containers)
+        port: Port to connect to
     
     Returns:
         List of Cell objects with rich text segments
@@ -303,18 +317,18 @@ def main(file_path: str = "Book.xlsx", auto_start: bool = True) -> list[Cell]:
     # Start LibreOffice if requested
     if auto_start:
         print("Starting LibreOffice in headless mode...")
-        if not start_libreoffice_headless():
+        if not start_libreoffice_headless(port=port, host=host):
             print("\nFailed to start LibreOffice automatically.")
             print("Please start it manually:")
-            print('  soffice --headless --accept="socket,host=localhost,port=2002;urp;StarOffice.ComponentContext" &')
+            print(f'  soffice --headless --accept="socket,host={host},port={port};urp;StarOffice.ComponentContext" &')
             print("\nOr on macOS:")
-            print('  /Applications/LibreOffice.app/Contents/MacOS/soffice --headless --accept="socket,host=localhost,port=2002;urp;StarOffice.ComponentContext" &')
+            print(f'  /Applications/LibreOffice.app/Contents/MacOS/soffice --headless --accept="socket,host={host},port={port};urp;StarOffice.ComponentContext" &')
             raise RuntimeError("Failed to start LibreOffice")
     
     # Connect to LibreOffice
-    print("\nConnecting to LibreOffice...")
+    print(f"\nConnecting to LibreOffice at {host}:{port}...")
     try:
-        context = connect_to_libreoffice()
+        context = connect_to_libreoffice(host=host, port=port)
         print("  Connected successfully!")
     except Exception as e:
         print(f"  Connection failed: {e}")
@@ -322,7 +336,8 @@ def main(file_path: str = "Book.xlsx", auto_start: bool = True) -> list[Cell]:
         print("1. Make sure LibreOffice is running:")
         print("   ps aux | grep soffice")
         print("2. Try starting it manually:")
-        print('   /Applications/LibreOffice.app/Contents/MacOS/soffice --headless --accept="socket,host=localhost,port=2002;urp;StarOffice.ComponentContext" &')
+        print(f'   /Applications/LibreOffice.app/Contents/MacOS/soffice --headless --accept="socket,host={host},port={port};urp;StarOffice.ComponentContext" &')
+        print("3. In Docker containers, use host='127.0.0.1' instead of 'localhost'")
         raise
     
     # Load spreadsheet

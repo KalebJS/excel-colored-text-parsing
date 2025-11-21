@@ -1,0 +1,18 @@
+services:
+  robocorp-bot:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.rcc
+    container_name: robocorp-libreoffice-bot
+    volumes:
+      # Mount current directory to access Excel files and see output
+      - .:/app
+      # Mount RCC cache to speed up subsequent runs
+      - rcc-cache:/root/.robocorp
+    environment:
+      - EXCEL_FILE=Book.xlsx
+    restart: "no"
+
+volumes:
+  rcc-cache:

@@ -1,0 +1,12 @@
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.10.12
+  - pip=23.1.2
+  - pip:
+      - pydantic==2.5.0
+      - robocorp==1.4.0
+
+# Note: python3-uno must be installed via apt-get in the Dockerfile
+# It cannot be installed via conda or pip as it's part of LibreOffice

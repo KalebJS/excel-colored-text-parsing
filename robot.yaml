@@ -1,0 +1,16 @@
+tasks:
+  Parse Excel with LibreOffice:
+    shell: sh -c "soffice --headless --accept='socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext' --nofirststartwizard & sleep 5 && python tasks.py"
+
+condaConfigFile: conda.yaml
+artifactsDir: output
+
+PATH:
+  - .
+  - bin
+
+PYTHONPATH:
+  - .
+  - libraries
+  # Add LibreOffice Python UNO path for Ubuntu/Debian
+  - /usr/lib/python3/dist-packages

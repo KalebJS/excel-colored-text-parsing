@@ -1,0 +1,35 @@
+FROM --platform=linux/amd64 ubuntu:22.04
+
+# Avoid interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install LibreOffice, Python3-UNO, and RCC dependencies
+RUN apt-get update && apt-get install -y \
+    libreoffice \
+    libreoffice-calc \
+    python3 \
+    python3-uno \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install RCC (Robocorp Control Center)
+RUN curl -o rcc https://downloads.robocorp.com/rcc/releases/latest/linux64/rcc \
+    && chmod +x rcc \
+    && mv rcc /usr/local/bin/
+
+# Create working directory
+WORKDIR /app
+
+# Copy the robot files
+COPY conda.yaml robot.yaml tasks.py tech_libreoffice.py ./
+COPY Book.xlsx ./
+
+# Create output directory
+RUN mkdir -p output
+
+# Expose the UNO port
+EXPOSE 2002
+
+# Default command - will be overridden by docker-compose or can be run directly
+CMD ["rcc", "task", "run", "--robot", "robot.yaml", "--task", "Parse Excel with LibreOffice"]
